@@ -58,6 +58,21 @@
       <artifactId>geospark</artifactId>
       <version>0.6.0</version>
     </dependency>
+    <!-- https://mvnrepository.com/artifact/org.apache.spark/spark-sql_2.11 -->
+	<dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-sql_2.11</artifactId>
+      <version>2.1.0</version>
+	</dependency>
+<!-- https://mvnrepository.com/artifact/com.databricks/spark-csv_2.11 -->
+	<dependency>
+	  <groupId>com.databricks</groupId>
+	    <artifactId>spark-csv_2.11</artifactId>
+	    <version>1.0.3</version>
+	</dependency>
+
+	
+	
   </dependencies>
 
   <build>

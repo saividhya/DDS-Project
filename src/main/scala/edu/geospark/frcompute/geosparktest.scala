@@ -13,6 +13,7 @@ import com.vividsolutions.jts.geom.Point
 import com.vividsolutions.jts.geom.Coordinate
 import com.vividsolutions.jts.geom.Envelope
 import org.apache.spark.{SparkConf, SparkContext};
+import org.apache.spark.rdd.RDD
 
 
 object geosparktest {
@@ -27,5 +28,6 @@ object geosparktest {
     val knnResultSize = KNNQuery.SpatialKnnQuery(pointRDDKNN, queryPoint, 5, false).size()
     val timestamp2: Long = System.currentTimeMillis;
     println("Time for KNN Query without index : -------------------->" + (timestamp2 - timestamp1))
+    var rddArray: Array[RDD[String]] = new Array[RDD[String]](31)
   }
 }

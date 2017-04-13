@@ -22,12 +22,13 @@ object geosparktest {
     val conf=new SparkConf().setAppName("Geo Test").setMaster("spark://192.168.0.200:7077").set("spark.driver.host","192.168.0.200").set("spark.ui.port","4040")
     val sc=new SparkContext(conf)
     val geometryFactory=new GeometryFactory();
-    val queryPoint=geometryFactory.createPoint(new Coordinate(35.08, -113.79))
-    val pointRDDKNN = new PointRDD(sc, "hdfs://master:54310/user/hduser/dataset/arealm.csv", 0, FileDataSplitter.CSV, false)
+    val pointRDDRtreeGrid = new PointRDD(sc, "hdfs://master:54310/user/hduser/dataset/arealm.csv", 0, FileDataSplitter.CSV, false, 10); 
+    val rectangleRDDRtreeGrid = new RectangleRDD(sc, "hdfs://master:54310/user/hduser/dataset/zcta510.csv", 0, FileDataSplitter.CSV, false); 
+    pointRDDRtreeGrid.spatialPartitioning(GridType.RTREE);
+    rectangleRDDRtreeGrid.spatialPartitioning(pointRDDRtreeGrid.grids);
     val timestamp1: Long = System.currentTimeMillis;
-    val knnResultSize = KNNQuery.SpatialKnnQuery(pointRDDKNN, queryPoint, 5, false).size()
+    val spatialJoinResultSize = JoinQuery.SpatialJoinQuery(pointRDDRtreeGrid,rectangleRDDRtreeGrid,true, true)
     val timestamp2: Long = System.currentTimeMillis;
-    println("Time for KNN Query without index : -------------------->" + (timestamp2 - timestamp1))
-    var rddArray: Array[RDD[String]] = new Array[RDD[String]](31)
+    
   }
 }

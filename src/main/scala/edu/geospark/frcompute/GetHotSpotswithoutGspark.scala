@@ -35,23 +35,19 @@ object GetHotSpotswithoutGspark
     timeStampDF.select("tpep_pickup_datetime", "pickup_longitude", "pickup_latitude").rdd
   }
   
-  def getAllSquares (boundaryEnvelope : Envelope) : ArrayList[(Double, Double)] =
+  def getAllSquares (boundaryEnvelope : Envelope) : ArrayList[(Int, Int)] =
   {
     // val boundaryEnvelope = new Envelope(0,10,0,10)
     val intervalX = 0.01
 		val intervalY = 0.01
 		val horizontalPartitions = Math.ceil((boundaryEnvelope.getMaxX - boundaryEnvelope.getMinX) / intervalX).toInt
 		val verticalPartitions = Math.ceil((boundaryEnvelope.getMaxY - boundaryEnvelope.getMinY) / intervalY).toInt
-    val squares = new ArrayList[(Double, Double)]
+    val squares = new ArrayList[(Int, Int)]
 		for (i <- 0 to (horizontalPartitions - 1))
 		{
 		  for (j <- 0 to (verticalPartitions - 1))
 		  {
-		    var x1 = boundaryEnvelope.getMinX()+intervalX*i
-		    var y1 = boundaryEnvelope.getMinY()+intervalY*j
-		    val roundednewx = BigDecimal(x1).setScale(2, BigDecimal.RoundingMode.HALF_UP).toDouble
-        val roundednewy = BigDecimal(y1).setScale(2, BigDecimal.RoundingMode.HALF_UP).toDouble
-		    squares.add((roundednewx, roundednewy))
+		    squares.add((i, j))
 		  }
 		}
 		squares
@@ -68,10 +64,11 @@ object GetHotSpotswithoutGspark
     
     // Construct the squares for the new york envelope
     val boundaryEnvelope = new Envelope(-74.25, -73.7, 40.5, 40.9)  
-    val minX = boundaryEnvelope.getMinX
-    val maxX = boundaryEnvelope.getMaxX
-    val minY = boundaryEnvelope.getMinY
-    val maxY = boundaryEnvelope.getMaxY
+    val minX = 0
+    val maxX = ((boundaryEnvelope.getMaxX - boundaryEnvelope.getMinX) / interval).toInt
+    val minY = 0
+    val maxY = ((boundaryEnvelope.getMaxY - boundaryEnvelope.getMinY) / interval).toInt
+    println(minX + " " + maxX + " " + minY + " " + maxY)
     val minXBC = sc.broadcast(minX)
     val maxXBC = sc.broadcast(maxX)
     val minYBC = sc.broadcast(minY)
@@ -89,22 +86,20 @@ object GetHotSpotswithoutGspark
                             cal.setTime(format.parse(x.get(0).toString))
                             (x.get(1).toString().toDouble, x.get(2).toString().toDouble, cal.get(Calendar.DAY_OF_MONTH))
                          }
-                         .filter(x => x._1 >= minXBC.value && x._1 <= maxXBC.value && x._2 >= minYBC.value && x._2 <= maxYBC.value)
+                         .filter(x => x._1 >= boundaryEnvelope.getMinX && x._1 <= boundaryEnvelope.getMaxX && x._2 >= boundaryEnvelope.getMinY && x._2 <= boundaryEnvelope.getMaxY)
                          .cache()
     // dayFilteredRDD.foreach(x => println(x))
     // println(dayFilteredRDD.count())
    
     // Function to find the cell's X and Y value for a given point
-    def findCell(x : (Double, Double)) : (Double, Double) = 
+    def findCell(x : (Double, Double)) : (Int, Int) = 
                          {
-                             val newx = (Math.floor((x._1 / intervalBC.value)) * intervalBC.value)
-                             val newy = (Math.floor((x._2 / intervalBC.value)) * intervalBC.value)
-                             val roundednewx = BigDecimal(newx).setScale(2, BigDecimal.RoundingMode.HALF_UP).toDouble
-                             val roundednewy = BigDecimal(newy).setScale(2, BigDecimal.RoundingMode.HALF_UP).toDouble
-                             (roundednewx, roundednewy)
+                             val newx = ((x._1 - boundaryEnvelope.getMinX) / intervalBC.value).toInt
+                             val newy = ((x._2 - boundaryEnvelope.getMinY) / intervalBC.value).toInt
+                             (newx, newy)
                          }
-   // println(findCell(-74.0075759887695,40.7325363159179))
-   // println(findCell(-74.0163955688476,40.7064018249511))
+    println(findCell(-74.0075759887695,40.7325363159179))
+    println(findCell(-74.0163955688476,40.7064018249511))
     // Construct the map for the cell value
     val cubeAttributeRDD = dayFilteredRDD.map
                            {
@@ -119,11 +114,11 @@ object GetHotSpotswithoutGspark
     // Variables for calculating the neighbour values
     val cubeAttributeMap = cubeAttributeRDD.collectAsMap()
     val pointsCountMapBC = sc.broadcast(cubeAttributeMap)
-    val xArrayBC = sc.broadcast(Array(0, 0.01, -0.01, 0, 0, -0.01, 0.01, 0.01, -0.01))
-    val yArrayBC = sc.broadcast(Array(0, 0, 0, 0.01, -0.01, 0.01, -0.01, 0.01, -0.01))
+    val xArrayBC = sc.broadcast(Array(0, 1, -1, 0, 0, -1, 1, 1, -1))
+    val yArrayBC = sc.broadcast(Array(0, 0, 0, 1, -1, 1, -1, 1, -1))
     
     // Function to get the neighbour values including itself and the number of neighbours
-    def getNeighbourValues(x : Double, y : Double, day : Int) : (Long, Int) =
+    def getNeighbourValues(x : Int, y : Int, day : Int) : (Long, Int) =
     {
       var count : scala.Long = 0
       var weight : scala.Int = 0
@@ -178,7 +173,7 @@ object GetHotSpotswithoutGspark
                                     val denominatorRight : Double = ((numCellsBC.value * weight) - (weight * weight)) / (numCellsBC.value - 1)
                                     val denominator : Double = standardDeviationBC.value * Math.sqrt(denominatorRight)
                                     val finalValue : Double= numerator / denominator
-                                    ((x._1, x._2, i), finalValue)
+                                    (((x._1 * 0.01) + boundaryEnvelope.getMinX, (x._2 * 0.01) + boundaryEnvelope.getMinY, i), finalValue)
                                   })
     }
     finalResults.sortBy(_._2, false).take(50).foreach(x => println( x._1._2 + ", " + x._1._1 + ", "+ x._1._3 + ", " + x._2)) 

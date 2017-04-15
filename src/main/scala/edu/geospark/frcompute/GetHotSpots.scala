@@ -151,8 +151,6 @@ object GetHotSpots
           weight += 1
         }
       }
-      count -= countsMap.getOrElse((x, y, day), 0.toLong)
-      weight -= 1
       (count, weight)
     }
     

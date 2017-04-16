@@ -68,7 +68,7 @@ object GetHotSpotswithoutGspark
     val maxX = ((boundaryEnvelope.getMaxX - boundaryEnvelope.getMinX) / interval).toInt
     val minY = 0
     val maxY = ((boundaryEnvelope.getMaxY - boundaryEnvelope.getMinY) / interval).toInt
-    println(minX + " " + maxX + " " + minY + " " + maxY)
+    //println(minX + " " + maxX + " " + minY + " " + maxY)
     val minXBC = sc.broadcast(minX)
     val maxXBC = sc.broadcast(maxX)
     val minYBC = sc.broadcast(minY)
@@ -98,8 +98,8 @@ object GetHotSpotswithoutGspark
                              val newy = ((x._2 - boundaryEnvelope.getMinY) / intervalBC.value).toInt
                              (newx, newy)
                          }
-    println(findCell(-74.0075759887695,40.7325363159179))
-    println(findCell(-74.0163955688476,40.7064018249511))
+    //println(findCell(-74.0075759887695,40.7325363159179))
+    //println(findCell(-74.0163955688476,40.7064018249511))
     // Construct the map for the cell value
     val cubeAttributeRDD = dayFilteredRDD.map
                            {
@@ -163,19 +163,19 @@ object GetHotSpotswithoutGspark
   
     // Get the square list
     val squaresRDD = sc.parallelize(rectangleGrids.asScala)
-    var finalResults = sc.emptyRDD[((scala.Double, scala.Double, scala.Int), scala.Double)]
+    var finalResults = sc.emptyRDD[((scala.Double, scala.Double, scala.Int), scala.Double, scala.Long, scala.Int, scala.Double, scala.Double)]
     for (i <- 1 to 31)
     {
       finalResults = finalResults.union(squaresRDD.map 
                                   { x => 
                                     val (neighbourValues, weight) = getNeighbourValues(x._1, x._2, i)
                                     val numerator : Double = neighbourValues - (meanBC.value * weight)
-                                    val denominatorRight : Double = ((numCellsBC.value * weight) - (weight * weight)) / (numCellsBC.value - 1)
+                                    val denominatorRight : Double = ((numCellsBC.value * weight) - (weight * weight)).toDouble / (numCellsBC.value - 1)
                                     val denominator : Double = standardDeviationBC.value * Math.sqrt(denominatorRight)
                                     val finalValue : Double= numerator / denominator
-                                    (((x._1 * 0.01) + boundaryEnvelope.getMinX, (x._2 * 0.01) + boundaryEnvelope.getMinY, i), finalValue)
+                                    (((x._1 * 0.01) + boundaryEnvelope.getMinX, (x._2 * 0.01) + boundaryEnvelope.getMinY, i), finalValue, neighbourValues, weight, numerator, denominator)
                                   })
     }
-    finalResults.sortBy(_._2, false).take(50).foreach(x => println( x._1._2 + ", " + x._1._1 + ", "+ x._1._3 + ", " + x._2)) 
+    finalResults.sortBy(_._2, false).take(50).foreach(x => println( x._1._2 + ", " + x._1._1 + ", "+ x._1._3 + ", " + x._2 + ", " + x._3 + ", " + x._4 + ", " + x._5 + ", " + x._6)) 
   }
 }

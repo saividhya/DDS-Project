@@ -183,11 +183,6 @@ object GetHotSpotswithoutGspark
     top50Results.foreach(x => println(x._2 + ", " + x._1 + ", " + x._3 + ", " + x._4))
     println("====================================================================================")
     println()
-    // top50Results.saveAsTextFile(outputFilePath)
-    val pw = new PrintWriter(new File(outputFilePath))
-    val results = top50Results.collect()
-    for ( i <- 0 to results.size - 1)
-      pw.write(results(i)._2 + ", " + results(i)._1 + ", " + results(i)._3 + ", " + results(i)._4 + "\n")
-    pw.close()
+    top50Results.saveAsTextFile(outputFilePath)
   }
 }

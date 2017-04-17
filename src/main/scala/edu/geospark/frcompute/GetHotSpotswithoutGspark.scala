@@ -9,6 +9,7 @@ import org.apache.spark.api.java.JavaRDD
 import org.apache.log4j.Level
 import java.text._
 import java.util.ArrayList
+import scala.collection.mutable.HashSet
 import java.util.Calendar
 import java.lang._
 import collection.JavaConverters._
@@ -25,21 +26,6 @@ object GetHotSpotswithoutGspark
     timeStampDF.select("tpep_pickup_datetime", "pickup_longitude", "pickup_latitude").rdd
   }
   
-  def getAllSquares (boundaryEnvelope : Envelope, interval : Double) : ArrayList[(Int, Int)] =
-  {
-		val horizontalPartitions = Math.ceil((boundaryEnvelope.getMaxX - boundaryEnvelope.getMinX) / interval).toInt
-		val verticalPartitions = Math.ceil((boundaryEnvelope.getMaxY - boundaryEnvelope.getMinY) / interval).toInt
-    val squares = new ArrayList[(Int, Int)]
-		for (i <- 0 to (horizontalPartitions - 1))
-		{
-		  for (j <- 0 to (verticalPartitions - 1))
-		  {
-		    squares.add((i, j))
-		  }
-		}
-		squares
-  }
- 
   def main(args: Array[String]): Unit = 
   {
     // Spark level configurations
@@ -70,8 +56,6 @@ object GetHotSpotswithoutGspark
     val maxXBC = sc.broadcast(maxX)
     val minYBC = sc.broadcast(minY)
     val maxYBC = sc.broadcast(maxY)
-    
-    val rectangleGrids = getAllSquares(boundaryEnvelope, interval)
 
     val timeStampRDD = loadCSV(filePath)
     val format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
@@ -112,10 +96,11 @@ object GetHotSpotswithoutGspark
     val yArrayBC = sc.broadcast(Array(0, 0, 0, 1, -1, 1, -1, 1, -1))
     
     // Function to get the neighbour values including itself and the total number of neighbours
-    def getNeighbourValues(x : Int, y : Int, day : Int) : (Long, Int) =
+    def getNeighbourValues(x : Int, y : Int, day : Int) : (Long, Int, HashSet[(Int, Int, Int)]) =
     {
       var count : scala.Long = 0
       var weight : scala.Int = 0
+      var neighbours = new HashSet[(Int, Int, Int)]()
       val countsMap = pointsCountMapBC.value
       def checkXY(x : Double, y : Double, z: Int) : Boolean = 
         if(x >= minXBC.value && x <= maxXBC.value && y >= minYBC.value && y <= maxYBC.value && z >= 1 && z <= 31) true else false
@@ -128,21 +113,28 @@ object GetHotSpotswithoutGspark
         {
           count += countsMap.getOrElse((newx, newy, day), 0.toLong)
           weight += 1
+          val temp = (newx, newy, day)
+          neighbours += temp
         }
         if (checkXY(newx, newy, day + 1))
         {
           count += countsMap.getOrElse((newx, newy, day+1), 0.toLong)
           weight += 1
+          val temp = (newx, newy, day + 1)
+          neighbours += temp
         }
         if (checkXY(newx, newy, day - 1))
         {
           count += countsMap.getOrElse((newx, newy, day-1), 0.toLong)
           weight += 1
+          val temp = (newx, newy, day - 1)
+          neighbours += temp
         }
       }
-      (count, weight)
+      (count, weight, neighbours)
     }
-                           
+    
+   
     // Calculation of Formula parameters like mean, standard deviation
     val horizontalPartitions = Math.ceil((boundaryEnvelope.getMaxX - boundaryEnvelope.getMinX) / 0.01).toInt
   	val verticalPartitions = Math.ceil((boundaryEnvelope.getMaxY - boundaryEnvelope.getMinY) / 0.01).toInt
@@ -158,21 +150,23 @@ object GetHotSpotswithoutGspark
     val standardDeviationBC = sc.broadcast(standardDeviation)
     val numCellsBC = sc.broadcast(numCells)
   
-    // Get the square list and iterate for each cube and get the Getis ord score
-    val squaresRDD = sc.parallelize(rectangleGrids.asScala)
-    var finalResults = sc.emptyRDD[(scala.Double, scala.Double, scala.Int, scala.Double)]
-    for (i <- 1 to 31)
-    {
-      finalResults = finalResults.union(squaresRDD.map 
+    // Construct the square list based on the neighbours
+    val squaresRDD = sc.parallelize(cubeAttributeRDD.map(x => getNeighbourValues(x._1._1, x._1._2, x._1._3))
+                                                    .map(x => x._3)
+                                                    .reduce((x, y) => x.++=(y))
+                                                    .toSeq)
+                                     
+    // Iterate the RDD containing each cube and get the Getis ord score
+    var finalResults = squaresRDD.map 
                                   { x => 
-                                    val (neighbourValues, weight) = getNeighbourValues(x._1, x._2, i)
+                                    val (neighbourValues, weight, neighbours) = getNeighbourValues(x._1, x._2, x._3)
                                     val numerator : Double = neighbourValues - (meanBC.value * weight)
                                     val denominatorRight : Double = ((numCellsBC.value * weight) - (weight * weight)).toDouble / (numCellsBC.value - 1)
                                     val denominator : Double = standardDeviationBC.value * Math.sqrt(denominatorRight)
                                     val finalValue : Double= numerator / denominator
-                                    ((x._1 * intervalBC.value) + boundaryEnvelopeBC.value.getMinX, (x._2 * intervalBC.value) + boundaryEnvelopeBC.value.getMinY, i , finalValue)
-                                  })
-    }
+                                    ((x._1 * intervalBC.value) + boundaryEnvelopeBC.value.getMinX, (x._2 * intervalBC.value) + boundaryEnvelopeBC.value.getMinY, x._3 - 1, finalValue)
+                                  }
+
     
     // Sort and take the top 50 results
     val top50Results = finalResults.sortBy(_._4, false).zipWithIndex().filter(x => x._2 < 50).map(x => x._1)
